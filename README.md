@@ -139,7 +139,7 @@ flowchart LR
 ### 1. 克隆项目
 
 ```bash
-git clone https://github.com/1624899/ai_interview.git
+git clone https://github.com/HuangLianjin/ai_interview.git
 cd ai-interview
 ```
 
