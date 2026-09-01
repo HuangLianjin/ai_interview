@@ -2,10 +2,14 @@
   <img src="web/public/logo.png" alt="AI Interview Agent" width="80" height="80" style="border-radius: 20%">
 </p>
 
-<h1 align="center">🎯 职面 AI · AI 面试 & 简历智能体</h1>
+<h1 align="center">🎯 职面 AI · AI 面试与简历优化智能体（AI Interview &amp; Resume Agent）</h1>
 
 <p align="center">
-  <strong>基于 LangGraph 的全能求职助手：智能面试模拟 + 简历深度优化</strong>
+  <strong>基于 LangGraph 的 AI Agent 应用：多智能体模拟面试、语音面试、能力评估与简历优化</strong>
+</p>
+
+<p align="center">
+  <em>项目类型：AI Agent 应用 · 全栈 Web 项目（LangGraph + FastAPI + Next.js + PostgreSQL）</em>
 </p>
 
 <p align="center">
