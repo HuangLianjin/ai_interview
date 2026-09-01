@@ -1,0 +1,18 @@
+.vscode
+.chainlit
+__pycache__
+data
+.env
+meta-output
+test
+web/yarn.lock
+web/build_log.txt
+web/test-results/
+web/playwright-report/
+# Local run artifacts
+.venv/
+*.log
+AGENTS.md
+CLAUDE.md
+
+backend/static/

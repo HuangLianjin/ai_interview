@@ -1,0 +1,98 @@
+version: '3.8'
+
+services:
+  # PostgreSQL 数据库
+  postgres:
+    image: postgres:16-alpine
+    container_name: ai_interview_db
+    restart: always
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-ai_interview}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-ai_interview}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - ai_interview_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ai_interview}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # 后端 API
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: ai_interview_backend
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - OPENAI_BASE_URL=${OPENAI_BASE_URL:-https://api.openai.com/v1}
+      - SMART_MODEL=${SMART_MODEL:-deepseek-chat}
+      - FAST_MODEL=${FAST_MODEL:-deepseek-chat}
+      - JWT_SECRET=${JWT_SECRET:-change-me}
+      - TOKEN_TTL_SECONDS=${TOKEN_TTL_SECONDS:-1800}
+      - CODE_TTL_MINUTES=${CODE_TTL_MINUTES:-5}
+      - ASR_API_KEY=${ASR_API_KEY:-}
+      - ASR_BASE_URL=${ASR_BASE_URL:-https://dashscope.aliyuncs.com/compatible-mode/v1}
+      - ASR_MODEL=${ASR_MODEL:-qwen3-asr-flash}
+      - VOICE_API_KEY=${VOICE_API_KEY:-}
+      - VOICE_BASE_URL=${VOICE_BASE_URL:-https://dashscope.aliyuncs.com/compatible-mode/v1}
+      - VOICE_MODEL=${VOICE_MODEL:-qwen3-omni-flash}
+    networks:
+      - ai_interview_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # 前端
+  frontend:
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+      args:
+        - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+    container_name: ai_interview_frontend
+    restart: always
+    depends_on:
+      - backend
+    networks:
+      - ai_interview_network
+
+  # Nginx 反向代理
+  nginx:
+    image: nginx:alpine
+    container_name: ai_interview_nginx
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+      - "8080:80"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+      - ./nginx/logs:/var/log/nginx
+      - ./certbot/www:/var/www/certbot:ro
+      - ./certbot/conf:/etc/letsencrypt:ro
+    depends_on:
+      - frontend
+      - backend
+    networks:
+      - ai_interview_network
+
+volumes:
+  postgres_data:
+
+networks:
+  ai_interview_network:
+    driver: bridge

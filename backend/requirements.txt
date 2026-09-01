@@ -1,0 +1,30 @@
+# FastAPI 后端依赖
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+python-multipart>=0.0.6
+
+# LangChain（仅必需组件）
+langchain-core>=0.1.0
+langchain-openai>=0.0.5
+langgraph>=0.0.20
+langgraph-checkpoint-postgres>=2.0.0
+
+# PostgreSQL 数据库
+asyncpg>=0.29.0
+psycopg[binary,pool]>=3.2.0
+
+# 文档处理
+pymupdf>=1.23.0
+python-docx>=1.1.0
+
+# 工具库
+python-dotenv>=1.0.0
+pydantic>=2.5.0
+pydantic-settings>=2.1.0
+
+# 开发工具 (可选)
+httpx>=0.25.0
+PyJWT==2.10.1
+reportlab==4.2.5
+alembic==1.13.3
+edge-tts>=7.0.0
