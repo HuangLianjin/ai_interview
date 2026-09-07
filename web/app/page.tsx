@@ -12,6 +12,7 @@ import { ProfileDialog } from "@/components/ProfileDialog";
 import { isAuthenticated, getPhone, clearAuth, getToken, getNickname, getAvatar, saveProfile } from "@/lib/auth";
 import { authHeaders } from "@/lib/api/config";
 import { SessionProfileDialog } from "@/components/SessionProfileDialog";
+import { endSessionInterview } from "@/lib/api/sessions";
 import { useInterviewStore } from "@/store/useInterviewStore";
 import { useSpeechToText } from "@/hooks/useSpeechToText";
 import { getUserId } from "@/hooks/useUserIdentity";
@@ -55,6 +56,7 @@ export default function InterviewPage() {
   });
   const [hintContent, setHintContent] = useState<string | null>(null);
   const [isLoadingHint, setIsLoadingHint] = useState(false);
+  const [endingInterview, setEndingInterview] = useState(false);
 
   // 持久化视图状态：令牌过期或未登录时始终回到首页
   useEffect(() => {
@@ -74,6 +76,7 @@ export default function InterviewPage() {
 
   // Refs
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const endingInterviewRef = useRef(false);
   const scrollViewportRef = useRef<HTMLDivElement>(null);
 
   // ===== Store 状态与方法 =====
@@ -94,6 +97,7 @@ export default function InterviewPage() {
     sessionLoading,
     threadId,
     isInitializing,
+    isVoiceMode,
 
     // 方法
     fetchSessions,
@@ -212,6 +216,50 @@ export default function InterviewPage() {
       handleSend();
     }
   };
+
+  const handleEndInterview = async (reason: "manual" | "timeout" = "manual") => {
+    if (endingInterviewRef.current || isInterviewCompleted || !threadId) return;
+    endingInterviewRef.current = true;
+    setEndingInterview(true);
+    try {
+      if (isStreaming) useInterviewStore.getState().stopStreaming();
+      const apiConfig = useInterviewStore.getState().getApiConfigForRequest();
+      const ok = await endSessionInterview(threadId, apiConfig);
+      if (!ok) {
+        toast.error("结束面试失败，请稍后重试");
+        return;
+      }
+      await fetchSessions(undefined);
+      await selectSession(threadId);
+      toast.success(reason === "timeout" ? "长时间未作答，面试已自动结束" : "面试已结束");
+    } catch (error) {
+      console.error("结束面试失败:", error);
+      toast.error("结束面试失败，请稍后重试");
+    } finally {
+      endingInterviewRef.current = false;
+      setEndingInterview(false);
+    }
+  };
+
+  // 等待回答超过 5 分钟自动结束面试
+  useEffect(() => {
+    const waitingForAnswer =
+      !isVoiceMode &&
+      !!currentSession?.session_id &&
+      currentSession.metadata.mode === 'mock' &&
+      currentSession.metadata.status !== 'completed' &&
+      !isStreaming &&
+      messages.length > 0 &&
+      messages[messages.length - 1]?.role === 'assistant';
+
+    if (!waitingForAnswer) return;
+
+    const timer = setTimeout(() => {
+      handleEndInterview("timeout");
+    }, 5 * 60 * 1000);
+
+    return () => clearTimeout(timer);
+  }, [currentSession?.session_id, currentSession?.metadata.status, currentSession?.metadata.mode, isStreaming, isVoiceMode, messages]);
 
   // ===== 消息编辑和重新生成 =====
   const handleEditMessage = async (index: number, newContent: string) => {
@@ -931,6 +979,19 @@ export default function InterviewPage() {
                               <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" /><path d="M19 10v2a7 7 0 0 1-14 0v-2" /><line x1="12" x2="12" y1="19" y2="22" /></svg>
                             </button>
                           </div>
+
+                          {!isInterviewCompleted && threadId && messages.length > 0 && !isVoiceMode && (
+                            <Button
+                              variant="outline"
+                              onClick={() => handleEndInterview("manual")}
+                              disabled={endingInterview}
+                              title="立即结束本轮面试"
+                              className="h-[52px] shrink-0 border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700 gap-1.5 px-3 whitespace-nowrap"
+                            >
+                              {endingInterview ? <Loader2 className="w-4 h-4 animate-spin" /> : <X className="w-4 h-4" />}
+                              结束面试
+                            </Button>
+                          )}
 
                           <Button
                             onClick={isStreaming ? stopStreaming : handleSend}

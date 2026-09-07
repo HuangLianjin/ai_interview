@@ -8,6 +8,7 @@ import { useInterviewStore } from '@/store/useInterviewStore';
 import { getUserId } from '@/hooks/useUserIdentity';
 import { saveAudioLocally, getAudioUrl } from '@/lib/audioStorage';
 import { cn } from '@/lib/utils';
+import { endSessionInterview } from '@/lib/api/sessions';
 import { PreparingInterview } from './interview/PreparingInterview';
 
 interface VoiceInterviewProps {
@@ -35,6 +36,8 @@ export function VoiceInterview({ sessionId, onEnd }: VoiceInterviewProps) {
     const isInterviewEndPendingRef = useRef(false);
     // 用于中断正在进行的网络请求 (SSE)
     const abortControllerRef = useRef<AbortController | null>(null);
+    // 记录最后一次语音活动时间，用于 5 分钟无应答自动结束
+    const lastVoiceActivityRef = useRef<number>(Date.now());
 
     // 1. Hook
     const {
@@ -89,11 +92,27 @@ export function VoiceInterview({ sessionId, onEnd }: VoiceInterviewProps) {
     // 2. 初始化：规划面试
     const hasInitialized = useRef(false);
 
-    // 挂断并同步数据
-    const handleHangUp = async () => {
+    // 挂断并同步数据；markComplete=true 表示用户手动结束或超时自动结束
+    const handleHangUp = async (markComplete: boolean = false) => {
         try {
-            // 只停止录音和音频播放，不中断 SSE 流，让数据继续接收完成
+            // 停止录音和音频播放
             stopRecording();
+            if (abortControllerRef.current) {
+                abortControllerRef.current.abort();
+                abortControllerRef.current = null;
+            }
+
+            // 无论面试是否完成，立即标记为 completed 并触发后台能力画像
+            if (markComplete && sessionId) {
+                const apiConfig = useInterviewStore.getState().getApiConfigForRequest();
+                const ok = await endSessionInterview(sessionId, apiConfig);
+                if (ok) {
+                    toast.success('面试已结束');
+                } else {
+                    toast.error('结束面试失败，请稍后重试');
+                }
+            }
+
             // 在退出前强制同步一次会话详情，确保回顾界面有最新消息
             await useInterviewStore.getState().selectSession(sessionId);
         } catch (error) {
@@ -102,6 +121,24 @@ export function VoiceInterview({ sessionId, onEnd }: VoiceInterviewProps) {
             onEnd();
         }
     };
+
+    // 用户有任何语音活动（发送回答 / AI 提问）都会刷新计时
+    useEffect(() => {
+        lastVoiceActivityRef.current = Date.now();
+    }, [voiceHistory.length, status]);
+
+    // 等待回答超过 5 分钟自动结束面试
+    useEffect(() => {
+        if (status !== 'listening' && status !== 'idle') return;
+        const interval = setInterval(() => {
+            if (isInterviewEndPendingRef.current) return;
+            if (Date.now() - lastVoiceActivityRef.current >= 5 * 60 * 1000) {
+                toast.info('长时间未作答，面试已自动结束');
+                handleHangUp(true);
+            }
+        }, 10 * 1000);
+        return () => clearInterval(interval);
+    }, [status]);
 
     useEffect(() => {
         const initSession = async () => {
@@ -785,7 +822,7 @@ export function VoiceInterview({ sessionId, onEnd }: VoiceInterviewProps) {
                     </button>
 
                     <button
-                        onClick={handleHangUp}
+                        onClick={() => handleHangUp(true)}
                         className="group flex flex-col items-center gap-1.5 transition-all outline-none"
                     >
                         <div className="w-16 h-16 rounded-full bg-red-500 flex items-center justify-center shadow-[0_0_20px_rgba(239,68,68,0.4)] hover:shadow-[0_0_30px_rgba(239,68,68,0.6)] hover:scale-105 active:scale-95 transition-all">

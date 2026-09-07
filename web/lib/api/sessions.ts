@@ -217,3 +217,28 @@ export async function createNextRound(
     }
 }
 
+
+/**
+ * 立即结束当前面试（无论是否完成）
+ */
+export async function endSessionInterview(
+    sessionId: string,
+    apiConfig?: unknown
+): Promise<boolean> {
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/sessions/${sessionId}/end`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                ...authHeaders(),
+            },
+            body: JSON.stringify({ api_config: apiConfig || null }),
+        });
+
+        if (!response.ok) throw new Error('结束面试失败');
+        return true;
+    } catch (error) {
+        console.error('结束面试失败:', error);
+        return false;
+    }
+}

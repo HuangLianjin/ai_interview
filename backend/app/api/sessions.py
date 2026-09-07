@@ -31,6 +31,42 @@ class NextRoundRequest(BaseModel):
     max_questions: int = 5
 
 
+class EndSessionRequest(BaseModel):
+    """立即结束面试请求"""
+    api_config: Optional[dict] = None
+
+
+@router.post("/{session_id}/end")
+async def end_session_interview(
+    session_id: str,
+    request: Optional[EndSessionRequest] = None,
+    x_user_id: Optional[str] = Header(None, alias="X-User-ID")
+):
+    """
+    立即结束当前面试
+
+    无论面试是否全部完成，都会将会话标记为 completed，
+    并触发后台能力画像分析。
+    """
+    try:
+        session = await session_service.get_session(session_id)
+        if not session:
+            raise HTTPException(status_code=404, detail="会话不存在")
+
+        from app.core.interview_analysis import handle_interview_complete
+        await handle_interview_complete(
+            session_id=session_id,
+            api_config=request.api_config if request else None,
+            trigger_analysis=True
+        )
+        return {"success": True, "session_id": session_id, "message": "面试已结束"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"结束面试失败: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="结束面试失败")
+
+
 @router.post("/", response_model=SessionDetailResponse)
 async def create_session(
     request: SessionCreateRequest,
