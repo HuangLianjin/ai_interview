@@ -9,6 +9,7 @@ web/yarn.lock
 web/build_log.txt
 web/test-results/
 web/playwright-report/
+web/prebuilt/
 # Local run artifacts
 .venv/
 *.log

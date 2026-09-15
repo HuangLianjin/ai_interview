@@ -122,7 +122,7 @@ services:
   frontend:
     build:
       context: ./web
-      dockerfile: Dockerfile
+      dockerfile: ${FRONTEND_DOCKERFILE:-Dockerfile}
       args:
         - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
     container_name: ai_interview_frontend

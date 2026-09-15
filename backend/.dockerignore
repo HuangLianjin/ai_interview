@@ -42,6 +42,7 @@ env/
 
 # Database files (local development)
 data/
+static/
 *.db
 *.sqlite
 
