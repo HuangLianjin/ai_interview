@@ -16,7 +16,7 @@ from app.database.resume_generation_service import session_store, get_generation
 
 logger = logging.getLogger(__name__)
 
-async def _traced_generation_node(node_name: str, fn, state: ResumeGenerationState) -> dict:
+async def _traced_generation_node(node_name: str, fn, state: "ResumeGenerationState") -> dict:
     """执行简历生成节点并记录 Trace。"""
     from app.services.trace_service import record_step
 
