@@ -52,6 +52,32 @@ class ResumeOptimizerState(TypedDict):
 # 专家智能体节点
 # ============================================================================
 
+async def _traced_node(node_name: str, fn, state: ResumeOptimizerState) -> dict:
+    """执行节点并记录 Trace；失败也记录后原样抛出。"""
+    from app.services.trace_service import record_step
+
+    started = time.perf_counter()
+    session_key = f"resume:{state.get('user_id', 'default_user')}"
+    try:
+        result = await fn(state)
+        await record_step(
+            session_id=session_key,
+            node_name=node_name,
+            status="success",
+            latency_ms=(time.perf_counter() - started) * 1000,
+        )
+        return result
+    except Exception as e:
+        await record_step(
+            session_id=session_key,
+            node_name=node_name,
+            status="error",
+            latency_ms=(time.perf_counter() - started) * 1000,
+            error=str(e),
+        )
+        raise
+
+
 async def node_prepare(state: ResumeOptimizerState) -> dict:
     """
     准备节点：加载面试对话和能力画像数据
@@ -593,18 +619,18 @@ async def optimize_resume(
     logger.info("开始简历内容优化（圆桌会议模式）")
     
     # 1. 准备阶段
-    prepare_result = await node_prepare(state)
+    prepare_result = await _traced_node("resume_prepare", node_prepare, state)
     state.update(prepare_result)
     
     # 2. 专家分析阶段（并行执行）
     logger.info("专家分析阶段开始（并行）")
     
     # 错开启动时间，避免同时触发 API 限流
-    match_task = asyncio.create_task(node_match_analyst(state))
+    match_task = asyncio.create_task(_traced_node("resume_match_analyst", node_match_analyst, state))
     await asyncio.sleep(0.5)
-    content_task = asyncio.create_task(node_content_writer(state))
+    content_task = asyncio.create_task(_traced_node("resume_content_writer", node_content_writer, state))
     await asyncio.sleep(0.5)
-    hr_task = asyncio.create_task(node_hr_reviewer(state))
+    hr_task = asyncio.create_task(_traced_node("resume_hr_reviewer", node_hr_reviewer, state))
     
     match_result, content_result, hr_result = await asyncio.gather(
         match_task, content_task, hr_task
@@ -616,21 +642,21 @@ async def optimize_resume(
     
     # 3. 主持人整合
     logger.info("主持人整合阶段")
-    moderator_result = await node_moderator(state)
+    moderator_result = await _traced_node("resume_moderator", node_moderator, state)
     state.update(moderator_result)
     
     # 4. 反思阶段
     logger.info("反思阶段")
-    reflect_result = await node_reflect(state)
+    reflect_result = await _traced_node("resume_reflect", node_reflect, state)
     state.update(reflect_result)
     
     # 5. 精炼阶段（根据反思结果优化方案）
     logger.info("精炼阶段")
-    refine_result = await node_refine(state)
+    refine_result = await _traced_node("resume_refine", node_refine, state)
     state.update(refine_result)
     
     # 6. 最终输出
-    final_result = await node_finalize(state)
+    final_result = await _traced_node("resume_finalize", node_finalize, state)
     state.update(final_result)
     
     logger.info("简历内容优化完成")
@@ -676,7 +702,7 @@ async def optimize_resume_streaming(
     
     # 1. 准备阶段
     yield {"type": "progress", "stage": "prepare", "message": "正在加载面试记录..."}
-    prepare_result = await node_prepare(state)
+    prepare_result = await _traced_node("resume_prepare", node_prepare, state)
     state.update(prepare_result)
     yield {"type": "progress", "stage": "prepare", "message": "面试记录加载完成", "complete": True}
     
@@ -684,11 +710,11 @@ async def optimize_resume_streaming(
     yield {"type": "progress", "stage": "experts", "message": "三位专家正在分析中..."}
     
     # 错开启动时间，避免同时触发 API 限流
-    match_task = asyncio.create_task(node_match_analyst(state))
+    match_task = asyncio.create_task(_traced_node("resume_match_analyst", node_match_analyst, state))
     await asyncio.sleep(0.5)
-    content_task = asyncio.create_task(node_content_writer(state))
+    content_task = asyncio.create_task(_traced_node("resume_content_writer", node_content_writer, state))
     await asyncio.sleep(0.5)
-    hr_task = asyncio.create_task(node_hr_reviewer(state))
+    hr_task = asyncio.create_task(_traced_node("resume_hr_reviewer", node_hr_reviewer, state))
     
     # 监控任务完成
     pending = {match_task, content_task, hr_task}
@@ -731,7 +757,7 @@ async def optimize_resume_streaming(
     
     # 3. 主持人整合
     yield {"type": "progress", "stage": "moderator", "message": "主持人正在整合专家意见..."}
-    moderator_result = await node_moderator(state)
+    moderator_result = await _traced_node("resume_moderator", node_moderator, state)
     state.update(moderator_result)
     if moderator_result.get("moderator_summary", {}).get("error"):
         error_msg = moderator_result["moderator_summary"]["error"]
@@ -741,7 +767,7 @@ async def optimize_resume_streaming(
     
     # 4. 反思阶段
     yield {"type": "progress", "stage": "reflect", "message": "正在进行质量审核..."}
-    reflect_result = await node_reflect(state)
+    reflect_result = await _traced_node("resume_reflect", node_reflect, state)
     state.update(reflect_result)
     if reflect_result.get("reflection", {}).get("error"):
         error_msg = reflect_result["reflection"]["error"]
@@ -751,13 +777,13 @@ async def optimize_resume_streaming(
     
     # 5. 精炼阶段（根据反思结果优化方案）
     yield {"type": "progress", "stage": "refine", "message": "正在根据审核反馈优化方案..."}
-    refine_result = await node_refine(state)
+    refine_result = await _traced_node("resume_refine", node_refine, state)
     state.update(refine_result)
     yield {"type": "progress", "stage": "refine", "message": "方案精炼完成", "complete": True}
     
     # 6. 最终输出
     yield {"type": "progress", "stage": "finalize", "message": "正在生成最终结果..."}
-    final_result = await node_finalize(state)
+    final_result = await _traced_node("resume_finalize", node_finalize, state)
     state.update(final_result)
     
     # 将节点错误信息添加到最终结果中

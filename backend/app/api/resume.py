@@ -5,6 +5,7 @@
 
 import json
 import logging
+import time
 from typing import Optional, AsyncGenerator
 from fastapi import APIRouter, HTTPException, Header
 from fastapi.responses import StreamingResponse
@@ -33,6 +34,7 @@ from app.core.resume_generation_graph import (
     submit_user_answers,
     get_session_status
 )
+from app.services.trace_service import record_step
 
 logger = logging.getLogger(__name__)
 
@@ -69,6 +71,7 @@ async def analyze_resume_endpoint(
             detail="请先配置 API Key"
         )
     
+    started = time.perf_counter()
     try:
         # 执行分析
         result = await analyze_resume(
@@ -89,6 +92,14 @@ async def analyze_resume_endpoint(
             job_description=request.job_description,
             session_ids=request.session_ids
         )
+
+        await record_step(
+            session_id=f"resume:{user_id}",
+            node_name="resume_analyze",
+            status="success",
+            latency_ms=(time.perf_counter() - started) * 1000,
+            detail={"result_id": result_id, "session_ids": request.session_ids},
+        )
         
         return ResumeAnalyzeResponse(
             success=True,
@@ -101,6 +112,13 @@ async def analyze_resume_endpoint(
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.error(f"简历分析失败: {e}", exc_info=True)
+        await record_step(
+            session_id=f"resume:{user_id}",
+            node_name="resume_analyze",
+            status="error",
+            latency_ms=(time.perf_counter() - started) * 1000,
+            error=str(e),
+        )
         raise HTTPException(
             status_code=500,
             detail=f"分析失败: {str(e)}"
@@ -134,6 +152,7 @@ async def optimize_resume_endpoint(
             detail="请先配置 API Key"
         )
     
+    started = time.perf_counter()
     try:
         # 执行优化
         result = await optimize_resume(
@@ -156,6 +175,14 @@ async def optimize_resume_endpoint(
             session_ids=request.session_ids,
             include_profile=request.include_overall_profile
         )
+
+        await record_step(
+            session_id=f"resume:{user_id}",
+            node_name="resume_optimize",
+            status="success",
+            latency_ms=(time.perf_counter() - started) * 1000,
+            detail={"result_id": result_id, "session_ids": request.session_ids},
+        )
         
         return ResumeOptimizeResponse(
             success=True,
@@ -167,6 +194,13 @@ async def optimize_resume_endpoint(
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.error(f"简历优化失败: {e}", exc_info=True)
+        await record_step(
+            session_id=f"resume:{user_id}",
+            node_name="resume_optimize",
+            status="error",
+            latency_ms=(time.perf_counter() - started) * 1000,
+            error=str(e),
+        )
         raise HTTPException(
             status_code=500,
             detail=f"优化失败: {str(e)}"
@@ -202,6 +236,7 @@ async def optimize_resume_stream_endpoint(
     async def event_generator() -> AsyncGenerator[str, None]:
         """SSE 事件生成器"""
         final_result = None
+        stream_started = time.perf_counter()
         try:
             async for event in optimize_resume_streaming(
                 resume_content=request.resume_content,
@@ -236,10 +271,24 @@ async def optimize_resume_stream_endpoint(
                     logger.error(f"保存流式优化结果失败: {save_error}")
             
             # 发送结束信号（包含 result_id 供前端选中）
+            await record_step(
+                session_id=f"resume:{user_id}",
+                node_name="resume_optimize_stream",
+                status="success",
+                latency_ms=(time.perf_counter() - stream_started) * 1000,
+                detail={"result_id": result_id, "session_ids": request.session_ids},
+            )
             yield f"data: {json.dumps({'type': 'done', 'content': '[DONE]', 'result_id': result_id})}\n\n"
             
         except Exception as e:
             logger.error(f"SSE 流式优化失败: {e}", exc_info=True)
+            await record_step(
+                session_id=f"resume:{user_id}",
+                node_name="resume_optimize_stream",
+                status="error",
+                latency_ms=(time.perf_counter() - stream_started) * 1000,
+                error=str(e),
+            )
             yield f"data: {json.dumps({'type': 'error', 'content': str(e)})}\n\n"
     
     return StreamingResponse(

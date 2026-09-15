@@ -6,6 +6,7 @@
 import json
 import logging
 import asyncio
+import time
 import uuid
 from typing import List, Optional, Dict, Any, TypedDict
 from langchain_core.messages import HumanMessage
@@ -14,6 +15,32 @@ from app.core import llms
 from app.database.resume_generation_service import session_store, get_generation_service
 
 logger = logging.getLogger(__name__)
+
+async def _traced_generation_node(node_name: str, fn, state: ResumeGenerationState) -> dict:
+    """执行简历生成节点并记录 Trace。"""
+    from app.services.trace_service import record_step
+
+    started = time.perf_counter()
+    session_key = f"resume:{state.get('user_id', 'default_user')}"
+    try:
+        result = await fn(state)
+        await record_step(
+            session_id=session_key,
+            node_name=node_name,
+            status="success",
+            latency_ms=(time.perf_counter() - started) * 1000,
+        )
+        return result
+    except Exception as e:
+        await record_step(
+            session_id=session_key,
+            node_name=node_name,
+            status="error",
+            latency_ms=(time.perf_counter() - started) * 1000,
+            error=str(e),
+        )
+        raise
+
 
 
 # ============================================================================
@@ -760,19 +787,19 @@ async def _complete_generation(
         logger.info(f"开始生成循环: iteration={current_iter}")
         
         # 1. 生成初稿（含适度包装）
-        draft_result = await node_generate_draft(state)
+        draft_result = await _traced_generation_node("resume_generate_draft", node_generate_draft, state)
         state.update(draft_result)
         
         # 2. 初稿优化（检查遗漏、多维度优化）【新增】
-        optimize_result = await node_optimize_draft(state)
+        optimize_result = await _traced_generation_node("resume_optimize_draft", node_optimize_draft, state)
         state.update(optimize_result)
         
         # 3. 风控核查（只查严重造假）
-        check_result = await node_fact_check(state)
+        check_result = await _traced_generation_node("resume_fact_check", node_fact_check, state)
         state.update(check_result)
         
         # 4. 润色与终审
-        finalize_result = await node_finalize_and_review(state)
+        finalize_result = await _traced_generation_node("resume_finalize_review", node_finalize_and_review, state)
         state.update(finalize_result)
         
         # 检查是否通过

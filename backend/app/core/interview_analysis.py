@@ -6,6 +6,7 @@
 
 import asyncio
 import logging
+import os
 import time
 from typing import Dict, Any, List, Optional
 
@@ -164,8 +165,16 @@ async def handle_interview_complete(
         
         # 触发后台画像分析
         if trigger_analysis:
-            asyncio.create_task(trigger_background_analysis(session_id, api_config))
-            logger.info(f"[InterviewComplete] 已触发会话 {session_id} 的后台画像分析")
+            if os.getenv("TASK_QUEUE_ENABLED", "").lower() in ("1", "true", "yes"):
+                from app.services.task_queue import enqueue_task
+                await enqueue_task(
+                    "profile_analysis",
+                    {"session_id": session_id, "api_config": api_config},
+                )
+                logger.info(f"[InterviewComplete] 画像分析已入队: {session_id}")
+            else:
+                asyncio.create_task(trigger_background_analysis(session_id, api_config))
+                logger.info(f"[InterviewComplete] 已触发会话 {session_id} 的后台画像分析")
 
         await record_step(
             session_id=session_id,
