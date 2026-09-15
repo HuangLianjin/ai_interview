@@ -1,4 +1,5 @@
 """安全模块：接口限流与登录失败锁定防刷。"""
+import os
 import threading
 import time
 from datetime import datetime, timedelta
@@ -34,7 +35,39 @@ class InMemoryRateLimiter:
             self._hits.pop(key, None)
 
 
-rate_limiter = InMemoryRateLimiter()
+class RedisRateLimiter:
+    """基于 Redis 的分布式限流；连接异常时自动降级到内存限流。"""
+
+    def __init__(self, url: str, fallback: InMemoryRateLimiter):
+        import redis
+        self._client = redis.Redis.from_url(url, decode_responses=True, socket_timeout=1)
+        self._fallback = fallback
+
+    def allow(self, key: str, limit: int, window_seconds: int) -> bool:
+        try:
+            redis_key = f"rate_limit:{key}"
+            current = self._client.incr(redis_key)
+            if current == 1:
+                self._client.expire(redis_key, window_seconds)
+            return int(current) <= limit
+        except Exception:
+            return self._fallback.allow(key, limit, window_seconds)
+
+
+_memory_limiter = InMemoryRateLimiter()
+
+
+def _build_rate_limiter():
+    redis_url = os.getenv("REDIS_URL", "").strip()
+    if redis_url:
+        try:
+            return RedisRateLimiter(redis_url, _memory_limiter)
+        except Exception:
+            pass
+    return _memory_limiter
+
+
+rate_limiter = _build_rate_limiter()
 
 
 def check_rate_limit(key: str, limit: int, window_seconds: int = 60):

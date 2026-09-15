@@ -28,3 +28,6 @@ PyJWT==2.10.1
 reportlab==4.2.5
 alembic==1.13.3
 edge-tts>=7.0.0
+
+# 分布式限流（可选）
+redis>=5.0.0
