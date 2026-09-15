@@ -16,3 +16,6 @@ AGENTS.md
 CLAUDE.md
 
 backend/static/
+
+# Eval report artifacts
+backend/evals/reports/

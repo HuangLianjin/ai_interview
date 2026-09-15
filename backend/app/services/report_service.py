@@ -1,5 +1,6 @@
 """面评报告服务：整合消息、每题评分和能力画像，生成 Markdown 与 PDF。"""
 import logging
+import time
 import uuid
 from pathlib import Path
 
@@ -13,6 +14,7 @@ from xml.sax.saxutils import escape
 
 from app.database.session_service import SessionService
 from app.services.scoring_service import get_session_scores
+from app.services.trace_service import record_step
 
 logger = logging.getLogger(__name__)
 
@@ -156,5 +158,23 @@ async def generate_session_report(session_id: str) -> dict:
             lines.append("")
 
     markdown = "\n".join(lines)
-    pdf_url = render_pdf(session.title or "面试评估报告", markdown)
+    started = time.perf_counter()
+    try:
+        pdf_url = render_pdf(session.title or "面试评估报告", markdown)
+    except Exception as e:
+        await record_step(
+            session_id=session_id,
+            node_name="report_pdf",
+            status="error",
+            latency_ms=(time.perf_counter() - started) * 1000,
+            error=str(e),
+        )
+        raise
+    await record_step(
+        session_id=session_id,
+        node_name="report_pdf",
+        status="success",
+        latency_ms=(time.perf_counter() - started) * 1000,
+        detail={"pdf_url": pdf_url},
+    )
     return {"markdown": markdown, "pdf_url": pdf_url}

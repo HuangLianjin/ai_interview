@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { Loader2, RefreshCw, X, Brain, CheckCircle2, Check, AlertCircle } from 'lucide-react';
 import { getSessionProfile, getSessionScores, generateSessionReport, type AbilityProfile } from '@/lib/api/profile';
 import { AbilityRadarChart } from './RadarChart';
-import { API_BASE_URL } from '@/lib/api/config';
+import { API_BASE_URL, authHeaders } from '@/lib/api/config';
 import { SkillTags } from './SkillTags';
 import { Button } from './ui/button';
 import {
@@ -25,6 +25,10 @@ export function SessionProfileDialog({ sessionId, open, onOpenChange }: Props) {
     const [loading, setLoading] = useState(true);
     const [generating, setGenerating] = useState(false);
     const [scores, setScores] = useState<any[]>([]);
+    const [feedbackRating, setFeedbackRating] = useState(0);
+    const [feedbackComment, setFeedbackComment] = useState("");
+    const [feedbackSubmitted, setFeedbackSubmitted] = useState(false);
+    const [submittingFeedback, setSubmittingFeedback] = useState(false);
 
     useEffect(() => {
         if (open && sessionId) {
@@ -64,6 +68,34 @@ export function SessionProfileDialog({ sessionId, open, onOpenChange }: Props) {
             window.open(`${API_BASE_URL}${report.pdf_url}`, '_blank');
         } catch {
             alert('生成面评报告失败，请稍后重试');
+        }
+    }
+
+    async function handleSubmitFeedback() {
+        if (!feedbackRating || submittingFeedback) return;
+        setSubmittingFeedback(true);
+        try {
+            const response = await fetch(`${API_BASE_URL}/api/feedback`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...authHeaders(),
+                },
+                body: JSON.stringify({
+                    target_type: 'report',
+                    target_id: sessionId,
+                    session_id: sessionId,
+                    rating: feedbackRating,
+                    tags: [],
+                    comment: feedbackComment,
+                }),
+            });
+            if (!response.ok) throw new Error('反馈提交失败');
+            setFeedbackSubmitted(true);
+        } catch {
+            alert('反馈提交失败，请稍后重试');
+        } finally {
+            setSubmittingFeedback(false);
         }
     }
 
@@ -109,6 +141,55 @@ export function SessionProfileDialog({ sessionId, open, onOpenChange }: Props) {
                 {/* 有数据 - 显示画像 */}
                 {!loading && !generating && profile && (
                     <div className="space-y-6">
+                        {/* 用户真实感受评价：进入优化闭环 */}
+                        <div className="bg-white border border-gray-200 rounded-xl p-6">
+                            <div className="flex items-center justify-between mb-3">
+                                <h3 className="text-base font-semibold text-gray-900">这次评估对你有帮助吗？</h3>
+                                {feedbackSubmitted && (
+                                    <span className="text-xs text-green-600 flex items-center gap-1">
+                                        <Check className="w-3 h-3" /> 已提交，感谢反馈
+                                    </span>
+                                )}
+                            </div>
+                            <div className="flex items-center gap-2 mb-3">
+                                {[1, 2, 3, 4, 5].map((star) => (
+                                    <button
+                                        key={star}
+                                        type="button"
+                                        disabled={feedbackSubmitted}
+                                        onClick={() => setFeedbackRating(star)}
+                                        className={`text-2xl transition-transform hover:scale-110 ${
+                                            star <= feedbackRating ? 'text-amber-400' : 'text-gray-300'
+                                        }`}
+                                        aria-label={`${star} 星`}
+                                    >
+                                        ★
+                                    </button>
+                                ))}
+                                <span className="text-xs text-gray-400 ml-1">
+                                    {feedbackRating ? `${feedbackRating} 星` : '点击评分'}
+                                </span>
+                            </div>
+                            {!feedbackSubmitted && (
+                                <div className="flex gap-2">
+                                    <input
+                                        value={feedbackComment}
+                                        onChange={(e) => setFeedbackComment(e.target.value)}
+                                        placeholder="哪里好用、哪里不准，写一句就行（可选）"
+                                        className="flex-1 rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-teal-500 focus:outline-none"
+                                    />
+                                    <Button
+                                        size="sm"
+                                        onClick={handleSubmitFeedback}
+                                        disabled={!feedbackRating || submittingFeedback}
+                                        className="bg-teal-600 hover:bg-teal-700 text-white"
+                                    >
+                                        {submittingFeedback ? <Loader2 className="w-4 h-4 animate-spin" /> : '提交反馈'}
+                                    </Button>
+                                </div>
+                            )}
+                        </div>
+
                         {/* 逐题评分 + 报告下载 */}
                         {scores.length > 0 && (
                             <div className="bg-white border border-gray-200 rounded-xl p-6">

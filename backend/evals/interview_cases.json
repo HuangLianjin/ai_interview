@@ -1,0 +1,166 @@
+[
+  {
+    "id": "followup-001",
+    "category": "followup",
+    "question": "请介绍一下你做的 AI 面试项目。",
+    "answer": "我做过一个 AI 面试项目。",
+    "expect_followup": true,
+    "note": "回答过于笼统，应该继续追问项目细节"
+  },
+  {
+    "id": "followup-002",
+    "category": "followup",
+    "question": "请介绍一下你做的 AI 面试项目。",
+    "answer": "项目叫职面 AI，用户上传简历和 JD 后可以做模拟面试。我负责整体架构和后端，用 LangGraph 编排规划、提问、追问和总结四个阶段；追问最多两次，每次回答会从技术、表达、深度三个维度评分，最后生成能力画像和 PDF 报告。上线后我修复过报告下载和简历排版两个问题。",
+    "expect_followup": false,
+    "note": "回答包含背景、方案、结果，信息足够，应该进入下一题"
+  },
+  {
+    "id": "followup-003",
+    "category": "followup",
+    "question": "说说你对 Java 并发的理解。",
+    "answer": "我主要用过 synchronized、ReentrantLock、CAS、AQS 和线程池。synchronized 是 JVM 层面的锁，适合简单同步；ReentrantLock 支持公平锁、可中断和超时；线程池我会根据 IO 密集和 CPU 密集设置不同线程数，并监控队列积压。项目里我还用并发工具做过批量任务。",
+    "expect_followup": false,
+    "note": "技术点覆盖充分，可以进入下一题"
+  },
+  {
+    "id": "followup-004",
+    "category": "followup",
+    "question": "说说你对 Java 并发的理解。",
+    "answer": "不知道。",
+    "expect_followup": true,
+    "note": "完全没答，应该换个角度引导"
+  },
+  {
+    "id": "followup-005",
+    "category": "followup",
+    "question": "你如何优化接口性能？",
+    "answer": "加缓存。",
+    "expect_followup": true,
+    "note": "只给了结论，缺少缓存位置、失效策略和效果数据"
+  },
+  {
+    "id": "followup-006",
+    "category": "followup",
+    "question": "你如何优化接口性能？",
+    "answer": "我先用慢查询日志和链路追踪定位瓶颈，发现列表接口每次都要查三次数据库。后来做了三件事：一是加 Redis 缓存并设置 5 分钟过期；二是把 N+1 查询改成批量查询；三是给高频字段加索引。优化后 P95 从 800ms 降到 180ms，缓存命中率大约 85%。",
+    "expect_followup": false,
+    "note": "有定位过程、方案和量化结果，信息足够"
+  },
+  {
+    "id": "followup-007",
+    "category": "followup",
+    "question": "讲一下你在项目里负责的模块。",
+    "answer": "我负责后端。",
+    "expect_followup": true,
+    "note": "信息不足，应该追问具体职责和产出"
+  },
+  {
+    "id": "followup-008",
+    "category": "followup",
+    "question": "讲一下你在项目里负责的模块。",
+    "answer": "我负责后端接口和 Agent 编排。具体做了 LangGraph 面试状态机、追问决策、逐题评分、能力画像和 PDF 报告；还做了手机验证码登录、JWT、限流和登录失败锁定。部署上用 Docker Compose 和 Nginx，把面试和旅游两个项目放在同一台服务器按域名分流。",
+    "expect_followup": false,
+    "note": "职责和产出明确"
+  },
+  {
+    "id": "scoring-001",
+    "category": "scoring",
+    "question": "说说你对缓存的穿透、击穿和雪崩的理解。",
+    "answer": "穿透是查一个一定不存在的数据，缓存和数据库都没有，请求每次都打到数据库；可以用布隆过滤器或者缓存空值解决。击穿是热点 key 失效瞬间大量请求打到数据库；可以用互斥锁或者逻辑过期，只让一个请求去重建缓存。雪崩是大量 key 同时失效或者缓存服务宕机，可以在过期时间上加随机值，并做多级缓存和限流降级。",
+    "min_total": 7,
+    "max_total": 10,
+    "note": "概念、原因、解决方案都答到了，应该是高分"
+  },
+  {
+    "id": "scoring-002",
+    "category": "scoring",
+    "question": "说说你对缓存的穿透、击穿和雪崩的理解。",
+    "answer": "就是缓存的一些问题，可以用 Redis 解决。",
+    "min_total": 0,
+    "max_total": 4,
+    "note": "没有具体解释，应该是低分"
+  },
+  {
+    "id": "scoring-003",
+    "category": "scoring",
+    "question": "你的项目为什么用 LangGraph？",
+    "answer": "因为流程有状态和分支，普通 if-else 维护起来比较乱。LangGraph 可以把节点和路由显式画出来，状态统一管理，还支持并行和条件路由，所以我用它来编排面试流程。",
+    "min_total": 5,
+    "max_total": 9,
+    "note": "回答了核心原因，但深度一般"
+  },
+  {
+    "id": "scoring-004",
+    "category": "scoring",
+    "question": "你的项目为什么用 LangGraph？",
+    "answer": "因为大家都是这么用的。",
+    "min_total": 0,
+    "max_total": 4,
+    "note": "没有技术依据，应该是低分"
+  },
+  {
+    "id": "scoring-005",
+    "category": "scoring",
+    "question": "你如何保证 AI 输出不造假？",
+    "answer": "我用了四层：检索结果必须带来源；预算和时间这类确定性内容交给代码计算和校验；生成后做风控和反思；关键内容人工审核。模型只负责理解和表达，不负责记事实和算数。",
+    "min_total": 6,
+    "max_total": 10,
+    "note": "有分层方案和明确边界，应该中高分"
+  },
+  {
+    "id": "scoring-006",
+    "category": "scoring",
+    "question": "你如何保证 AI 输出不造假？",
+    "answer": "让提示词写得严格一点。",
+    "min_total": 0,
+    "max_total": 4,
+    "note": "只靠提示词不够，缺少工程兜底"
+  },
+  {
+    "id": "scoring-007",
+    "category": "scoring",
+    "question": "讲讲你项目里遇到的一个难点。",
+    "answer": "有一次用户反馈面评报告下载不了。我先看接口是否返回 pdf_url，再用 curl 直接访问，发现返回的是 HTML 而不是 PDF，于是判断是静态资源路由问题。检查 Nginx 后确认没有转发 /static，加上反向代理后修复，并补了回归检查。",
+    "min_total": 7,
+    "max_total": 10,
+    "note": "有现象、定位过程、修复和验证，是很好的回答"
+  },
+  {
+    "id": "scoring-008",
+    "category": "scoring",
+    "question": "讲讲你项目里遇到的一个难点。",
+    "answer": "遇到过一些 bug，后来都解决了。",
+    "min_total": 0,
+    "max_total": 4,
+    "note": "没有细节，应该是低分"
+  },
+  {
+    "id": "closing-001",
+    "category": "closing",
+    "question": "今天的面试就到这里，辛苦了。",
+    "answer": "",
+    "expect_closing": true
+  },
+  {
+    "id": "closing-002",
+    "category": "closing",
+    "question": "我们还没到面试结束的时候，继续看下一题。",
+    "answer": "",
+    "expect_closing": false
+  },
+  {
+    "id": "closing-003",
+    "category": "closing",
+    "question": "面试结束，再见。",
+    "answer": "",
+    "expect_closing": true
+  },
+  {
+    "id": "closing-004",
+    "category": "closing",
+    "question": "这还不是面试结束，我们继续聊聊缓存。",
+    "answer": "",
+    "expect_closing": false
+  }
+]

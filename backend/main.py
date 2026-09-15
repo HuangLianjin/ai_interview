@@ -18,7 +18,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from app.api import chat, upload, sessions, config, resume, voice_chat, auth, report, account
+from app.api import chat, upload, sessions, config, resume, voice_chat, auth, report, account, observability
 from app.api.auth import decode_token
 from app.models.schemas import ErrorResponse
 from app.database import db_manager
@@ -292,6 +292,8 @@ app.include_router(voice_chat.router)
 app.include_router(auth.router)
 app.include_router(report.router)
 app.include_router(account.router)
+app.include_router(observability.router)
+app.include_router(observability.feedback_router)
 
 # 挂载静态文件目录
 static_dir = os.path.join(os.getcwd(), "static")

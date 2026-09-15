@@ -15,6 +15,7 @@ from langchain_core.messages import HumanMessage
 from app.core.graph import build_interview_graph
 from app.models.schemas import ChatRequest, ChatStreamResponse, InterviewStartRequest, ErrorResponse, RollbackRequest, ProfileGenerateRequest
 from app.database.session_service import SessionService
+from app.services.trace_service import TraceRecorder
 
 # 配置日志
 logger = logging.getLogger(__name__)
@@ -371,6 +372,12 @@ async def event_generator(graph, inputs, config, thread_id: str, user_message: s
     ai_response_content = ""
     fallback_ai_content = ""
     final_question_index = inputs.get("current_question_index", 0)
+    trace = TraceRecorder(
+        session_id=thread_id,
+        user_id=inputs.get("user_id") or "",
+        entrypoint="chat/stream",
+    )
+    await trace.start()
     
     try:
         # 保存用户消息到会话
@@ -405,12 +412,25 @@ async def event_generator(graph, inputs, config, thread_id: str, user_message: s
                         )
                         yield f"data: {response.model_dump_json()}\n\n"
             
+            # 记录每次 LLM 调用的 token 用量
+            elif kind == "on_chat_model_end":
+                await trace.record_llm_event(event)
+
             # 处理链结束，获取完整状态
             elif kind == "on_chain_end":
                 output = event["data"].get("output")
                 if output and isinstance(output, dict):
                     node_name = event.get("metadata", {}).get("langgraph_node", "")
                     is_complete = bool(output.get("is_complete")) or node_name == "summary"
+                    await trace.record_step(
+                        node_name=node_name or "chain",
+                        status="success",
+                        detail={
+                            "question_count": output.get("question_count"),
+                            "current_question_index": output.get("current_question_index"),
+                            "is_complete": is_complete,
+                        },
+                    )
 
                     if "current_question_index" in output:
                         msgs = output.get("messages") or []
@@ -466,6 +486,7 @@ async def event_generator(graph, inputs, config, thread_id: str, user_message: s
             question_text = inputs.get("current_sub_question") or (plan[answered_idx].get("content", "") if 0 <= answered_idx < len(plan) else "")
             await score_answer(thread_id, answered_idx, question_text, user_message, inputs.get("api_config"))
         # 发送结束信号
+        await trace.finish(status="success")
         response = ChatStreamResponse(
             type="done",
             content="[DONE]"
@@ -474,6 +495,7 @@ async def event_generator(graph, inputs, config, thread_id: str, user_message: s
         
     except Exception as e:
         logger.error(f"流式事件生成器错误: {str(e)}")
+        await trace.finish(status="error", error=str(e))
         # 发送错误事件
         response = ChatStreamResponse(
             type="error",

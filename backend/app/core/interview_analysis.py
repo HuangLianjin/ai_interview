@@ -6,9 +6,11 @@
 
 import asyncio
 import logging
+import time
 from typing import Dict, Any, List, Optional
 
 from . import llms
+from app.services.trace_service import record_step
 
 logger = logging.getLogger(__name__)
 
@@ -144,6 +146,7 @@ async def handle_interview_complete(
         api_config: API 配置
         trigger_analysis: 是否触发后台画像分析
     """
+    started = time.perf_counter()
     try:
         from app.database.session_service import SessionService
         
@@ -163,9 +166,24 @@ async def handle_interview_complete(
         if trigger_analysis:
             asyncio.create_task(trigger_background_analysis(session_id, api_config))
             logger.info(f"[InterviewComplete] 已触发会话 {session_id} 的后台画像分析")
+
+        await record_step(
+            session_id=session_id,
+            node_name="interview_complete",
+            status="success",
+            latency_ms=(time.perf_counter() - started) * 1000,
+            detail={"trigger_analysis": trigger_analysis},
+        )
         
     except Exception as e:
         logger.error(f"[InterviewComplete] 处理面试完成失败: {e}", exc_info=True)
+        await record_step(
+            session_id=session_id,
+            node_name="interview_complete",
+            status="error",
+            latency_ms=(time.perf_counter() - started) * 1000,
+            error=str(e),
+        )
 
 
 # ============================================================================

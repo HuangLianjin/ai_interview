@@ -6,11 +6,13 @@
 import json
 import logging
 import re
+import time
 from datetime import datetime
 from typing import Optional
 
 from app.core.llms import get_llm_for_request
 from app.database.base import db_manager
+from app.services.trace_service import record_step, extract_usage
 
 logger = logging.getLogger(__name__)
 
@@ -71,13 +73,30 @@ async def score_answer(
     if not question_text or not answer_text:
         return None
 
+    started = time.perf_counter()
     try:
         llm = get_llm_for_request(api_config, channel="smart")
         prompt = SCORE_PROMPT.format(question=question_text, answer=answer_text[:4000])
         response = await llm.ainvoke(prompt)
+        prompt_tokens, completion_tokens = extract_usage(
+            response,
+            input_text=prompt,
+            output_text=str(getattr(response, "content", "") or ""),
+        )
         data = _parse_score_response(response.content)
         if not data:
             logger.warning(f"[Scoring] 解析评分 JSON 失败: session={session_id} q={question_index}")
+            await record_step(
+                session_id=session_id,
+                node_name="scoring",
+                model="smart",
+                status="error",
+                latency_ms=(time.perf_counter() - started) * 1000,
+                prompt_tokens=prompt_tokens,
+                completion_tokens=completion_tokens,
+                detail={"question_index": question_index},
+                error="评分 JSON 解析失败",
+            )
             return None
 
         dimensions = data.get("dimensions") or {}
@@ -107,9 +126,28 @@ async def score_answer(
                 json.dumps(dimensions), total, comment, now,
             )
         logger.info(f"[Scoring] 已保存评分: session={session_id} q={question_index} total={total}")
+        await record_step(
+            session_id=session_id,
+            node_name="scoring",
+            model="smart",
+            status="success",
+            latency_ms=(time.perf_counter() - started) * 1000,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            detail={"question_index": question_index, "total": total},
+        )
         return {"dimensions": dimensions, "total": total, "comment": comment}
     except Exception as e:
         logger.error(f"[Scoring] 评分失败: {e}")
+        await record_step(
+            session_id=session_id,
+            node_name="scoring",
+            model="smart",
+            status="error",
+            latency_ms=(time.perf_counter() - started) * 1000,
+            detail={"question_index": question_index},
+            error=str(e),
+        )
         return None
 
 
