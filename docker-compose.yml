@@ -94,6 +94,8 @@ services:
       - JWT_SECRET=${JWT_SECRET:-change-me}
       - TASK_QUEUE_ENABLED=true
     command: ["python", "scripts/run_task_worker.py"]
+    healthcheck:
+      disable: true
     networks:
       - ai_interview_network
 
@@ -115,6 +117,8 @@ services:
       - ALERT_WEBHOOK_URL=${ALERT_WEBHOOK_URL:-}
       - ALERT_INTERVAL_SECONDS=${ALERT_INTERVAL_SECONDS:-600}
     command: ["python", "scripts/run_alert_loop.py"]
+    healthcheck:
+      disable: true
     networks:
       - ai_interview_network
 
