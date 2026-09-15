@@ -29,6 +29,10 @@ export function SessionProfileDialog({ sessionId, open, onOpenChange }: Props) {
     const [feedbackComment, setFeedbackComment] = useState("");
     const [feedbackSubmitted, setFeedbackSubmitted] = useState(false);
     const [submittingFeedback, setSubmittingFeedback] = useState(false);
+    const [appealOpen, setAppealOpen] = useState<number | null>(null);
+    const [appealReason, setAppealReason] = useState("");
+    const [appealSubmitting, setAppealSubmitting] = useState(false);
+    const [appealSubmitted, setAppealSubmitted] = useState<number[]>([]);
 
     useEffect(() => {
         if (open && sessionId) {
@@ -96,6 +100,33 @@ export function SessionProfileDialog({ sessionId, open, onOpenChange }: Props) {
             alert('反馈提交失败，请稍后重试');
         } finally {
             setSubmittingFeedback(false);
+        }
+    }
+
+    async function handleSubmitAppeal(questionIndex: number) {
+        if (appealReason.trim().length < 2 || appealSubmitting) return;
+        setAppealSubmitting(true);
+        try {
+            const response = await fetch(`${API_BASE_URL}/api/appeals`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...authHeaders(),
+                },
+                body: JSON.stringify({
+                    session_id: sessionId,
+                    question_index: questionIndex,
+                    reason: appealReason.trim(),
+                }),
+            });
+            if (!response.ok) throw new Error('申诉提交失败');
+            setAppealSubmitted((current) => [...current, questionIndex]);
+            setAppealOpen(null);
+            setAppealReason("");
+        } catch {
+            alert('申诉提交失败，请稍后重试');
+        } finally {
+            setAppealSubmitting(false);
         }
     }
 
@@ -209,6 +240,42 @@ export function SessionProfileDialog({ sessionId, open, onOpenChange }: Props) {
                                                 </span>
                                             </div>
                                             <p className="text-sm text-gray-600 mt-1 line-clamp-2">{s.comment}</p>
+                                            <div className="mt-2">
+                                                {appealSubmitted.includes(idx) ? (
+                                                    <span className="text-xs text-green-600 flex items-center gap-1">
+                                                        <Check className="w-3 h-3" /> 已申请人工复核
+                                                    </span>
+                                                ) : (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            setAppealOpen(appealOpen === idx ? null : idx);
+                                                            setAppealReason("");
+                                                        }}
+                                                        className="text-xs text-teal-600 hover:text-teal-700 flex items-center gap-1"
+                                                    >
+                                                        <AlertCircle className="w-3 h-3" /> 对本评分申请复核
+                                                    </button>
+                                                )}
+                                            </div>
+                                            {appealOpen === idx && !appealSubmitted.includes(idx) && (
+                                                <div className="mt-2 flex gap-2">
+                                                    <input
+                                                        value={appealReason}
+                                                        onChange={(e) => setAppealReason(e.target.value)}
+                                                        placeholder="请说明你认为评分不合理的原因"
+                                                        className="flex-1 rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-teal-500 focus:outline-none"
+                                                    />
+                                                    <Button
+                                                        size="sm"
+                                                        disabled={appealReason.trim().length < 2 || appealSubmitting}
+                                                        onClick={() => handleSubmitAppeal(idx)}
+                                                        className="bg-teal-600 hover:bg-teal-700 text-white"
+                                                    >
+                                                        {appealSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : '提交申诉'}
+                                                    </Button>
+                                                </div>
+                                            )}
                                         </div>
                                     ))}
                                 </div>

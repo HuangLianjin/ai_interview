@@ -4,6 +4,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
+from app.api.admin_deps import require_admin
 from app.api.auth import require_auth
 from app.services import human_review_service
 
@@ -13,12 +14,6 @@ admin_router = APIRouter(prefix="/api/admin", tags=["管理员复核"])
 
 def _user_id(payload: dict) -> str:
     return str(payload.get("sub", "default_user"))
-
-
-async def require_admin(payload: dict = Depends(require_auth)) -> dict:
-    if not await human_review_service.is_admin(_user_id(payload)):
-        raise HTTPException(status_code=403, detail="需要管理员权限")
-    return payload
 
 
 class AppealCreate(BaseModel):

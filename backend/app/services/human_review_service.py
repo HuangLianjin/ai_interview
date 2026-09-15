@@ -70,7 +70,7 @@ async def is_admin(user_id: str) -> bool:
             "SELECT role FROM users WHERE id = $1::int",
             int(user_id),
         )
-    return role == "admin"
+    return role in ("admin", "super_admin")
 
 
 async def write_audit(

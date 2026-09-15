@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # PostgreSQL 数据库
   postgres:
@@ -20,6 +18,21 @@ services:
       timeout: 5s
       retries: 5
 
+  redis:
+    image: redis:7-alpine
+    container_name: ai_interview_redis
+    restart: always
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    networks:
+      - ai_interview_network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   # 后端 API
   backend:
     build:
@@ -30,8 +43,11 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      redis:
+        condition: service_healthy
     environment:
       - DATABASE_URL=${DATABASE_URL}
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - OPENAI_BASE_URL=${OPENAI_BASE_URL:-https://api.openai.com/v1}
       - SMART_MODEL=${SMART_MODEL:-deepseek-chat}
@@ -45,6 +61,7 @@ services:
       - VOICE_API_KEY=${VOICE_API_KEY:-}
       - VOICE_BASE_URL=${VOICE_BASE_URL:-https://dashscope.aliyuncs.com/compatible-mode/v1}
       - VOICE_MODEL=${VOICE_MODEL:-qwen3-omni-flash}
+      - TASK_QUEUE_ENABLED=${TASK_QUEUE_ENABLED:-true}
     networks:
       - ai_interview_network
     healthcheck:
@@ -52,6 +69,51 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: ai_interview_worker
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - OPENAI_BASE_URL=${OPENAI_BASE_URL:-https://api.openai.com/v1}
+      - SMART_MODEL=${SMART_MODEL:-deepseek-chat}
+      - FAST_MODEL=${FAST_MODEL:-deepseek-chat}
+      - JWT_SECRET=${JWT_SECRET:-change-me}
+      - TASK_QUEUE_ENABLED=true
+    command: ["python", "scripts/run_task_worker.py"]
+    networks:
+      - ai_interview_network
+
+  monitor:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: ai_interview_monitor
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
+      - PUSHPLUS_TOKEN=${PUSHPLUS_TOKEN:-}
+      - ALERT_WEBHOOK_URL=${ALERT_WEBHOOK_URL:-}
+      - ALERT_INTERVAL_SECONDS=${ALERT_INTERVAL_SECONDS:-600}
+    command: ["python", "scripts/run_alert_loop.py"]
+    networks:
+      - ai_interview_network
 
   # 前端
   frontend:
@@ -92,6 +154,7 @@ services:
 
 volumes:
   postgres_data:
+  redis_data:
 
 networks:
   ai_interview_network:

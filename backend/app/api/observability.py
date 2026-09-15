@@ -4,6 +4,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
+from app.api.admin_deps import require_admin
 from app.api.auth import require_auth
 from app.services import trace_service
 
@@ -28,7 +29,7 @@ class FeedbackRequest(BaseModel):
 async def get_runs(
     session_id: Optional[str] = Query(None),
     limit: int = Query(50, ge=1, le=200),
-    payload: dict = Depends(require_auth),
+    payload: dict = Depends(require_admin),
 ):
     """查看运行记录；传 session_id 看某次面试，不传看最近记录。"""
     runs = await trace_service.list_runs(session_id=session_id, limit=limit)
@@ -36,7 +37,7 @@ async def get_runs(
 
 
 @router.get("/runs/{run_id}")
-async def get_run_detail(run_id: str, payload: dict = Depends(require_auth)):
+async def get_run_detail(run_id: str, payload: dict = Depends(require_admin)):
     """查看某次运行的完整节点链路、耗时、Token 和错误。"""
     detail = await trace_service.get_run_detail(run_id)
     if not detail:
@@ -47,7 +48,7 @@ async def get_run_detail(run_id: str, payload: dict = Depends(require_auth)):
 @router.get("/summary")
 async def get_summary(
     days: int = Query(7, ge=1, le=90),
-    payload: dict = Depends(require_auth),
+    payload: dict = Depends(require_admin),
 ):
     """成功率、平均/P95 延迟、Token 消耗、节点耗时统计。"""
     summary = await trace_service.get_trace_summary(days=days)
@@ -57,7 +58,7 @@ async def get_summary(
 @router.get("/product-metrics")
 async def get_product_metrics(
     days: int = Query(7, ge=1, le=90),
-    payload: dict = Depends(require_auth),
+    payload: dict = Depends(require_admin),
 ):
     """真实使用与效果指标：完成率、反馈评分、产出量、待修复评测失败数。"""
     metrics = await trace_service.get_product_metrics(days=days)
@@ -68,7 +69,7 @@ async def get_product_metrics(
 async def get_eval_failures(
     status: Optional[str] = Query("open"),
     limit: int = Query(200, ge=1, le=500),
-    payload: dict = Depends(require_auth),
+    payload: dict = Depends(require_admin),
 ):
     """查看评测失败样本池，用于反哺优化。"""
     failures = await trace_service.list_eval_failures(status=status, limit=limit)
@@ -78,7 +79,7 @@ async def get_eval_failures(
 @router.post("/eval-failures/{failure_id}/resolve")
 async def resolve_eval_failure(
     failure_id: int,
-    payload: dict = Depends(require_auth),
+    payload: dict = Depends(require_admin),
 ):
     """把评测失败样本标记为已解决。"""
     ok = await trace_service.resolve_eval_failure(failure_id)

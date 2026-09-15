@@ -197,7 +197,18 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="面试 Agent 离线评测")
     parser.add_argument("--live", action="store_true", help="调用真实 LLM 运行追问和评分评测")
     parser.add_argument("--category", help="只跑某一类：followup / scoring / closing")
-    parser.add_argument("--save-failures", action="store_true", help="把失败样本写入 eval_failures 表")
+    parser.add_argument(
+        "--save-failures",
+        action="store_true",
+        default=True,
+        help="把失败样本写入 eval_failures 表（默认开启）",
+    )
+    parser.add_argument(
+        "--no-save-failures",
+        action="store_false",
+        dest="save_failures",
+        help="只生成报告，不写入失败样本池",
+    )
     parser.add_argument("--output", help="评测报告输出路径")
     args = parser.parse_args()
 

@@ -284,6 +284,41 @@ async def generate_interview_plan(
             output_format=output_format
         )
         
+        tool_context = ""
+        if job_description:
+            try:
+                from app.services.tools_service import invoke_tool
+
+                skill_result = await invoke_tool(
+                    "job_skill_lookup",
+                    {"job_description": job_description},
+                    session_id=session_id,
+                )
+                if skill_result.get("success"):
+                    skills = (skill_result.get("result") or {}).get("skills") or []
+                    if skills:
+                        tool_context += (
+                            "\n【岗位技能工具结果】：\n"
+                            + "、".join(str(item) for item in skills[:20])
+                        )
+                if company_info and company_info not in ("未知", "未提供"):
+                    company_result = await invoke_tool(
+                        "company_info_lookup",
+                        {"company_name": company_info},
+                        session_id=session_id,
+                    )
+                    if company_result.get("success"):
+                        focus_points = (
+                            company_result.get("result") or {}
+                        ).get("focus_points") or []
+                        if focus_points:
+                            tool_context += (
+                                "\n【公司准备关注点】：\n"
+                                + "\n".join(f"- {item}" for item in focus_points)
+                            )
+            except Exception as e:
+                logger.warning(f"[Planner] 工具调用失败，降级为现有规划流程: {e}")
+
         # RAG 增强：根据简历和 JD 检索知识库，注入出题参考
         try:
             from app.services.rag_service import retrieve_knowledge, format_knowledge
@@ -293,6 +328,9 @@ async def generate_interview_plan(
                 prompt = knowledge_text + "\n\n" + prompt
         except Exception as e:
             logger.warning(f"[Planner] RAG 检索失败，降级为无知识库出题: {e}")
+
+        if tool_context:
+            prompt = tool_context + "\n\n" + prompt
 
         # 调用 LLM
         response = await current_llm.ainvoke(prompt)

@@ -35,6 +35,17 @@ interface ProductMetrics {
     open_eval_failures: number;
 }
 
+interface EvalFailure {
+    id: number;
+    case_id: string;
+    category: string;
+    question: string;
+    actual?: unknown;
+    expected?: unknown;
+    status: string;
+    created_at: string;
+}
+
 function fmtPercent(value: number) {
     return `${Math.round((value || 0) * 100)}%`;
 }
@@ -42,6 +53,8 @@ function fmtPercent(value: number) {
 export default function DashboardPage() {
     const [summary, setSummary] = useState<TraceSummary | null>(null);
     const [metrics, setMetrics] = useState<ProductMetrics | null>(null);
+    const [failures, setFailures] = useState<EvalFailure[]>([]);
+    const [resolving, setResolving] = useState<number | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
 
@@ -49,23 +62,42 @@ export default function DashboardPage() {
         setLoading(true);
         setError("");
         try {
-            const [summaryRes, metricsRes] = await Promise.all([
-                fetch(`${API_BASE_URL}/api/observability/summary?days=7`, { headers: authHeaders() }),
-                fetch(`${API_BASE_URL}/api/observability/product-metrics?days=7`, { headers: authHeaders() }),
+            const [summaryRes, metricsRes, failuresRes] = await Promise.all([
+                fetch(`${API_BASE_URL}/api/observability/summary?days=30`, { headers: authHeaders() }),
+                fetch(`${API_BASE_URL}/api/observability/product-metrics?days=30`, { headers: authHeaders() }),
+                fetch(`${API_BASE_URL}/api/observability/eval-failures?status=open&limit=100`, { headers: authHeaders() }),
             ]);
-            if (!summaryRes.ok || !metricsRes.ok) {
+            if (!summaryRes.ok || !metricsRes.ok || !failuresRes.ok) {
                 throw new Error("看板数据加载失败，请确认已登录");
             }
             const summaryData = await summaryRes.json();
             const metricsData = await metricsRes.json();
+            const failuresData = await failuresRes.json();
             setSummary(summaryData.summary);
             setMetrics(metricsData.metrics);
+            setFailures(failuresData.failures || []);
         } catch (e) {
             setError((e as Error).message);
         } finally {
             setLoading(false);
         }
     }, []);
+
+    async function resolveFailure(id: number) {
+        setResolving(id);
+        try {
+            const response = await fetch(`${API_BASE_URL}/api/observability/eval-failures/${id}/resolve`, {
+                method: "POST",
+                headers: authHeaders(),
+            });
+            if (!response.ok) throw new Error("标记失败");
+            setFailures((current) => current.filter((item) => item.id !== id));
+        } catch {
+            setError("失败样本处理失败");
+        } finally {
+            setResolving(null);
+        }
+    }
 
     useEffect(() => {
         load();
@@ -80,7 +112,7 @@ export default function DashboardPage() {
                             <BarChart3 className="w-6 h-6 text-teal-600" />
                             运行看板
                         </h1>
-                        <p className="text-sm text-slate-500 mt-1">近 7 天 Agent 运行、成本与用户反馈</p>
+                        <p className="text-sm text-slate-500 mt-1">近 30 天 Agent 运行、成本与用户反馈</p>
                     </div>
                     <Button variant="outline" onClick={load} disabled={loading}>
                         <RefreshCw className={`w-4 h-4 mr-2 ${loading ? "animate-spin" : ""}`} />
@@ -138,6 +170,49 @@ export default function DashboardPage() {
                             </div>
                         ) : (
                             <p className="text-sm text-slate-500 py-6 text-center">暂无运行数据，先跑一次面试再看。</p>
+                        )}
+                    </CardContent>
+                </Card>
+
+                <Card>
+                    <CardHeader className="pb-2">
+                        <CardTitle className="text-base">低分样本回流</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        {failures.length ? (
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-sm">
+                                    <thead>
+                                        <tr className="text-left text-slate-500 border-b">
+                                            <th className="py-2">样本</th>
+                                            <th className="py-2">类型</th>
+                                            <th className="py-2">问题</th>
+                                            <th className="py-2">操作</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {failures.map((item) => (
+                                            <tr key={item.id} className="border-b last:border-0">
+                                                <td className="py-2 font-medium text-slate-800">{item.case_id}</td>
+                                                <td className="py-2">{item.category}</td>
+                                                <td className="py-2 max-w-md truncate">{item.question || "-"}</td>
+                                                <td className="py-2">
+                                                    <Button
+                                                        size="sm"
+                                                        variant="outline"
+                                                        disabled={resolving === item.id}
+                                                        onClick={() => resolveFailure(item.id)}
+                                                    >
+                                                        {resolving === item.id ? "处理中" : "标记已修复"}
+                                                    </Button>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        ) : (
+                            <p className="text-sm text-slate-500 py-6 text-center">暂无待修复样本</p>
                         )}
                     </CardContent>
                 </Card>

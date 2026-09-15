@@ -99,6 +99,12 @@ async def start_interview(
     """
     
     session_created = False  # 标记是否新创建了会话（用于异常时清理）
+    trace = TraceRecorder(
+        session_id=request.thread_id,
+        user_id=x_user_id or "default_user",
+        entrypoint="chat/start",
+    )
+    await trace.start()
     
     try:
         # 初始化图谱（异步）
@@ -131,6 +137,7 @@ async def start_interview(
             "company_info": getattr(request, "company_info", "未知"),
             "mode": request.mode,
             "session_id": request.thread_id,  # 添加 session_id
+            "user_id": x_user_id or "default_user",
             "interview_plan": [],  # 将由 planner 节点填充
             "current_question_index": 0,
             "max_questions": request.max_questions,
@@ -192,6 +199,20 @@ async def start_interview(
                     content = event["data"]["chunk"].content
                     if content:
                         first_question += content
+            elif kind == "on_chat_model_end":
+                await trace.record_llm_event(event)
+            elif kind == "on_chain_end":
+                output = event["data"].get("output")
+                if output and isinstance(output, dict):
+                    node_name = event.get("metadata", {}).get("langgraph_node", "")
+                    await trace.record_step(
+                        node_name=node_name or "chain",
+                        status="success",
+                        detail={
+                            "question_count": output.get("question_count"),
+                            "current_question_index": output.get("current_question_index"),
+                        },
+                    )
         
         # 保存第一题到会话
         if first_question:
@@ -201,6 +222,8 @@ async def start_interview(
                 content=first_question,
                 question_index=0
             )
+
+        await trace.finish(status="success")
 
         # 返回会话信息
         return {
@@ -214,6 +237,7 @@ async def start_interview(
         }
         
     except Exception as e:
+        await trace.finish(status="error", error=str(e))
         error_str = str(e).lower()
         logger.error(f"开始面试会话失败: {str(e)}", exc_info=True)
         
@@ -257,7 +281,10 @@ async def start_interview(
 
 
 @router.post("/stream")
-async def stream_chat(request: ChatRequest):
+async def stream_chat(
+    request: ChatRequest,
+    x_user_id: Optional[str] = Header(None, alias="X-User-ID"),
+):
     """
     SSE 端点：流式聊天接口
     前端建立连接后，服务器不断推送 chunk
@@ -312,6 +339,7 @@ async def stream_chat(request: ChatRequest):
             "company_info": getattr(request, "company_info", "未知"),
             "mode": request.mode,
             "session_id": request.thread_id,
+            "user_id": x_user_id or "default_user",
             "max_questions": request.max_questions,
             
             # 状态注水（恢复）
